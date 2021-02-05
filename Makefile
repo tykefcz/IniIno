@@ -1,4 +1,4 @@
-ARDUINO_PATH=/opt/arduino-1.8.8
+ARDUINO_PATH=/opt/arduino
 CLASSPATH:=$(ARDUINO_PATH)/lib/arduino-core.jar:$(ARDUINO_PATH)/lib/pde.jar
 CLASSPATH:=$(CLASSPATH):$(wildcard $(ARDUINO_PATH)/lib/rsyntaxtextarea*.jar)
 # :$(ARDUINO_PATH)/lib/rsyntaxtextarea-3.0.3-SNAPSHOT.jar
