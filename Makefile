@@ -32,7 +32,7 @@ clean:
 	rm -f *~ src/*~
 
 zipup:
-	cd .. ; zip -r -y -x $(PROJ)/bin/\* -FS ~/Nextcloud/ZipSync/$(PROJ).zip $(PROJ)
+	cd .. ; zip -r -y -x $(PROJ)/bin/\* -x $(PROJ)/.git\* -FS ~/Nextcloud/ZipSync/$(PROJ).zip $(PROJ)
 
 zipdn:
 	cd .. ; unzip -u ~/Nextcloud/ZipSync/$(PROJ).zip
