@@ -294,6 +294,8 @@ public class IniIno implements Tool {
                          && bnam.equals(removeName)) {
                 rmbeg = bol; rmend = eol - 1;
               }
+            //} else {
+            //  System.out.println("bad line:"+line+":"+lntx);
             }
           }
         }
