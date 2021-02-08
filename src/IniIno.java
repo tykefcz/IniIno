@@ -19,6 +19,7 @@ import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JTextArea;
+import javax.swing.SwingUtilities;
 import processing.app.Base;
 import processing.app.BaseNoGui;
 import processing.app.Editor;
@@ -45,6 +46,7 @@ public class IniIno implements Tool {
   
   public static IIPanel panel = null;
   public static JDialog dialog = null;
+  private static Runnable afterSkechLoad = null;
 
   protected static String boardFqbn(TargetBoard b) {
     if (b == null) return "";
@@ -285,14 +287,17 @@ public class IniIno implements Tool {
               String fqbs = mbol.group(2).trim(),
                      bnam = mbol.group(1).trim();
               JMenuItem boarditem = getMenuForBoard(getBoard(fqbs));
-              //System.out.println("board at line "+line+":"+bnam+" * "+fqbs
-              //                   +" inst="+(boarditem!=null?boarditem.getText():"No"));
               if (action == 0) {
                 panel.addInoCfg(fqbs,bnam,boarditem != null);
               } else if (action == 1 && rmbeg < 0 
                          && removeName != null 
                          && bnam.equals(removeName)) {
                 rmbeg = bol; rmend = eol - 1;
+              } else if (action == 2 && boarditem != null) {
+                System.out.println("Activate board at line "+line+":"+bnam+" * "+fqbs);
+                //                 +" inst="+(boarditem!=null?boarditem.getText():"No"));
+                activateBoard(fqbs);
+                return;
               }
             //} else {
             //  System.out.println("bad line:"+line+":"+lntx);
@@ -308,7 +313,7 @@ public class IniIno implements Tool {
                            || (stoff < 0 && eofc >= 0)))
           break;
       }
-      if (action == 0) return; // readed no remove/add ok
+      if (action == 0 || action == 2) return; // readed no remove/add ok
       if (removeName != null && rmbeg >= 0) {
         // replace / remove found
         doc.remove(rmbeg,rmend - rmbeg);
@@ -382,14 +387,44 @@ public class IniIno implements Tool {
     if (dialog != null)
       dialog.setVisible(false);
   }
+
+  static final class AfterLoadSketch implements Runnable {
+    public void run() {
+      //System.out.println("AfterLoadSketch invoked");
+      try {
+        if (editor.getSketch()!=null && editor.getSketch().getPrimaryFile()!=null) {
+          if (PreferencesData.getBoolean("iniino.autostart",false)) {
+            IniIno.doInoParse(2,null,null,null,null);
+          }
+          return; // OK no Invoke
+        }
+      } catch (Exception e) {}
+      try {Thread.sleep(300);} catch (Exception e) {}
+      SwingUtilities.invokeLater(this);
+    }
+  }
+  
+  public static Runnable waitSketch() {
+    if (afterSkechLoad==null)
+      afterSkechLoad = new AfterLoadSketch();
+    return afterSkechLoad;
+  }
   
   @Override
   public String getMenuTitle() {
+    try {
+      SwingUtilities.invokeAndWait(IniIno.waitSketch());
+    } catch (Exception e) {
+    } catch (java.lang.Error er) {
+      /* load second sketch Cannot call invokeAndWait from the event dispatcher thread */
+      //System.out.println("Second sketch?");
+    }
     return "Project boards...";
   }
 
   @Override
   public void init(Editor editor) {
     IniIno.editor = editor;
+    //System.out.println("init called");
   }
 }

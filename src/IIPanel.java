@@ -22,6 +22,7 @@ import javax.swing.AbstractListModel;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -41,11 +42,13 @@ import javax.swing.event.ListDataListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import processing.app.Base;
+import processing.app.PreferencesData;
 import processing.app.Theme;
 
 @SuppressWarnings("serial")
 
-public class IIPanel extends JPanel {
+public class IIPanel extends JPanel 
+                  implements ActionListener,ListSelectionListener {
   private JPanel pnP;
   private JList<String> lsInIno;
   private JTextArea taActual;
@@ -54,6 +57,7 @@ public class IIPanel extends JPanel {
   private JButton btActivate;
   private JButton btClose;
   private JTextArea taRaw;
+  private JCheckBox cbAl;
   private String strRaw = "", actSet = "", actLbl = "Unknown";
   private int selId, foundId;
   //private DefaultListModel<String> defmodel;
@@ -106,6 +110,49 @@ public class IIPanel extends JPanel {
   }
     
   private ListData dataInIno;
+  
+  public void actionPerformed(ActionEvent e) {
+    Object src = e.getSource();
+    if (src == btActivate) {
+      if (IniIno.activateBoard(taRaw.getText())) {
+        JOptionPane.showMessageDialog(btActivate, "Activated successfully");
+        IniIno.dialogClose();
+      } else
+        JOptionPane.showMessageDialog(btActivate, "Error activate");
+    } else if (src == btAddIno) {
+      if (!actSet.equals("") && foundId < 0) {
+        IniIno.doInoParse(actLbl,actSet);
+        addInoCfg(actSet,actLbl,true);
+      }
+      btAddIno.setEnabled(false);
+    } else if (src == btRepIno) {
+      if (!actSet.equals("") && foundId < 0 && selId >= 0) {
+        BoardSet x = dataInIno.get(selId);
+        String newname = x.name;
+        String[] a = actSet.split(":",4),
+                 b = x.cfg.split(":",4);
+        if (a.length < 3 || b.length < 3 
+            || !(a[0].equals(b[0]) && a[1].equals(b[1]) && a[2].equals(b[2])))
+          newname = actLbl;
+        IniIno.doInoParse(newname,actSet,x.name);
+        foundId = selId;
+        dataInIno.replace(selId,newname,actSet);
+        taRaw.setText(actSet);
+        btAddIno.setEnabled(false);
+      }
+      btRepIno.setEnabled(false);
+    } else if (src == btClose) {
+      IniIno.dialogClose();
+    } else if (src == cbAl) {
+      PreferencesData.setBoolean("iniino.autostart",cbAl.isSelected());
+    }
+  }
+
+  public void valueChanged(ListSelectionEvent e) { 
+    Object src = e.getSource();
+    if (src==lsInIno)
+      IniIno.panel.selectIniIno(e); 
+  }
 
   public IIPanel() {
     GridBagLayout gbP = new GridBagLayout();
@@ -168,11 +215,20 @@ public class IIPanel extends JPanel {
     gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 0; gbcP.weighty = 0;
     gbcP.anchor = GridBagConstraints.NORTHWEST;
     gbcP.insets = new Insets(10, 10, 0, 0);
+    cbAl = new JCheckBox("Auto activate first board after sketch load",
+               PreferencesData.getBoolean("iniino.autostart",false));
+    gbP.setConstraints(cbAl, gbcP);
+    this.add(cbAl);
+
+    gbcP.gridx = 0; gbcP.gridy = 6; gbcP.gridwidth = 1; gbcP.gridheight = 1;
+    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 0; gbcP.weighty = 0;
+    gbcP.anchor = GridBagConstraints.NORTHWEST;
+    gbcP.insets = new Insets(10, 10, 0, 0);
     JLabel lbC = new JLabel("Raw settings (for arduino-cli):");
     gbP.setConstraints(lbC, gbcP);
     this.add(lbC);
 
-    gbcP.gridx = 0; gbcP.gridy = 6; gbcP.gridwidth = 2; gbcP.gridheight = 1;
+    gbcP.gridx = 0; gbcP.gridy = 7; gbcP.gridwidth = 2; gbcP.gridheight = 1;
     gbcP.fill = GridBagConstraints.BOTH; gbcP.weightx = 1; gbcP.weighty = 1;
     gbcP.anchor = GridBagConstraints.CENTER;
     gbcP.insets = new Insets(0, 10, 0, 10);
@@ -181,7 +237,7 @@ public class IIPanel extends JPanel {
     JScrollPane scpTaRaw = new JScrollPane(taRaw);
     gbP.setConstraints(scpTaRaw, gbcP);this.add(scpTaRaw);
     
-    gbcP.gridx = 0; gbcP.gridy = 7; gbcP.gridwidth = 1; gbcP.gridheight = 1;
+    gbcP.gridx = 0; gbcP.gridy = 8; gbcP.gridwidth = 1; gbcP.gridheight = 1;
     gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 1; gbcP.weighty = 0;
     gbcP.anchor = GridBagConstraints.NORTHWEST;
     gbcP.insets = new Insets(10, 20, 20, 10);
@@ -189,7 +245,7 @@ public class IIPanel extends JPanel {
     gbP.setConstraints(btActivate, gbcP);
     this.add(btActivate);
     
-    gbcP.gridx = 1; gbcP.gridy = 7; gbcP.gridwidth = 1; gbcP.gridheight = 1;
+    gbcP.gridx = 1; gbcP.gridy = 8; gbcP.gridwidth = 1; gbcP.gridheight = 1;
     gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 1; gbcP.weighty = 0;
     gbcP.anchor = GridBagConstraints.NORTHEAST;
     gbcP.insets = new Insets(10, 10, 20, 20);
@@ -203,51 +259,15 @@ public class IIPanel extends JPanel {
     btRepIno.setEnabled(false);
     taRaw.setEditable(false);
 
-    btActivate.addActionListener(new ActionListener() 
-      {public void actionPerformed(ActionEvent e) { 
-        if (IniIno.activateBoard(taRaw.getText())) {
-          JOptionPane.showMessageDialog(btActivate, "Activated successfully");
-          IniIno.dialogClose();
-        } else
-          JOptionPane.showMessageDialog(btActivate, "Error activate");
-      } });
+    btActivate.addActionListener(this);
     btActivate.setEnabled(false);
-    
-    btAddIno.addActionListener(new ActionListener() 
-      {public void actionPerformed(ActionEvent e) {
-        if (!actSet.equals("") && foundId < 0) {
-          IniIno.doInoParse(actLbl,actSet);
-          addInoCfg(actSet,actLbl,true);
-        }
-        btAddIno.setEnabled(false);
-      } });
-
-    btRepIno.addActionListener(new ActionListener() 
-      {public void actionPerformed(ActionEvent e) {
-        if (!actSet.equals("") && foundId < 0 && selId >= 0) {
-          BoardSet x = dataInIno.get(selId);
-          String newname = x.name;
-          String[] a = actSet.split(":",4),
-                   b = x.cfg.split(":",4);
-          if (a.length < 3 || b.length < 3 
-              || !(a[0].equals(b[0]) && a[1].equals(b[1]) && a[2].equals(b[2])))
-            newname = actLbl;
-          IniIno.doInoParse(newname,actSet,x.name);
-          foundId = selId;
-          dataInIno.replace(selId,newname,actSet);
-          taRaw.setText(actSet);
-          btAddIno.setEnabled(false);
-        }
-        btRepIno.setEnabled(false);
-      } });
-
-    btClose.addActionListener(new ActionListener() 
-      {public void actionPerformed(ActionEvent e) { 
-        IniIno.dialogClose();
-      } });
+    btAddIno.addActionListener(this);
+    btRepIno.addActionListener(this);
+    btClose.addActionListener(this);
+    cbAl.addActionListener(this);
     lsInIno.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-    lsInIno.addListSelectionListener(new ListSelectionListener()
-      {public void valueChanged(ListSelectionEvent e) { IniIno.panel.selectIniIno(e); } });
+    lsInIno.addListSelectionListener(this);
+    
   }
 
   public void setActual(String as, String lbl) {
