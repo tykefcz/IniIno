@@ -5,20 +5,25 @@
 
 package com.google.tykefcz.iniino;
 
+import java.awt.Component;
 import java.awt.Dialog.ModalityType;
-import java.lang.reflect.Field;
 import java.text.NumberFormat;
+import java.util.HashMap;
 import java.util.List;
 import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.Action;
+import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
+import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JTextArea;
+import javax.swing.MenuElement;
 import javax.swing.SwingUtilities;
 import processing.app.Base;
 import processing.app.BaseNoGui;
@@ -41,13 +46,13 @@ import static processing.app.I18n.tr;
  */
 public class IniIno implements Tool {
 
-  public static Editor editor;
-  public static long startTimestamp = 0;
+  protected Editor editor;
+  protected Base base;
+  protected IIPanel panel = null;
+  protected JDialog dialog = null;
+  protected JPopupMenu toolsMenu = null;
+  protected JMenu boardsMenu = null;
   
-  public static IIPanel panel = null;
-  public static JDialog dialog = null;
-  private static Runnable afterSkechLoad = null;
-
   protected static String boardFqbn(TargetBoard b) {
     if (b == null) return "";
     try { 
@@ -109,32 +114,27 @@ public class IniIno implements Tool {
   }
   
   @SuppressWarnings("unchecked")
-  protected static JMenuItem getMenuForBoard(TargetBoard tbo) {
+  protected JMenuItem getMenuForBoard(TargetBoard tbo) {
     JMenuItem toActivate = null;
     try {
-      if (tbo == null) return null;
+      if (tbo == null || base==null) return null;
       String fqbn = boardFqbn(tbo);
-      Field ebf = editor.getClass().getDeclaredField("base");
-      ebf.setAccessible(true);
-      processing.app.Base base = (processing.app.Base)ebf.get(editor);
-      List<JMenu> boardsCustomMenus;
-      Field bcmf = base.getClass().getDeclaredField("boardsCustomMenus");
-      bcmf.setAccessible(true);
-      boardsCustomMenus = (List<JMenu>)bcmf.get(base);
-      toActivate = findBoardInMenu(boardsCustomMenus.get(0),fqbn);
-    } catch (Exception e) {
-      e.printStackTrace();
+      toActivate = findBoardInMenu(base.getBoardsCustomMenus().get(0),fqbn);
+    } catch (Exception ex) {
+      ex.printStackTrace();
     };
     return toActivate;
   }
 
+  // return: 0 - OK, 1 - warning, 2 - error
   @SuppressWarnings("unchecked")
-  protected static boolean activateBoard(String boardFqbn) {
+  protected int activateBoard(String boardFqbn) {
     TargetBoard tbo = getBoard(boardFqbn);
-    if (tbo == null) return false;
+    int warncount = 0;
+    if (tbo == null) return 2;
     JMenuItem toActivate = getMenuForBoard(tbo);
     try {
-      if (toActivate != null) {
+      if (toActivate != null && base != null) {
         //System.out.println("set " + boardFqbn + " M=" + toActivate.getText());
         String[] cfs = boardFqbn.split(":",4);
         if (cfs.length == 4) {
@@ -158,60 +158,67 @@ public class IniIno implements Tool {
         for (java.awt.event.ActionListener listener : toActivate.getActionListeners())
           listener.actionPerformed(ev);
         System.out.println("Activated " + toActivate.getText() + ":" + boardFqbn);
-        List<JMenu> boardsCustomMenus;
-        Field ebf = editor.getClass().getDeclaredField("base");
-        ebf.setAccessible(true);
-        processing.app.Base base = (processing.app.Base)ebf.get(editor);
-        Field bcmf = base.getClass().getDeclaredField("boardsCustomMenus");
-        bcmf.setAccessible(true);
-        boardsCustomMenus = (List<JMenu>)bcmf.get(base);
         TargetPlatform platform = tbo.getContainerPlatform();
         PreferencesMap customMenus = platform.getCustomMenus();
         String platUID = platform.getId() + "_" + platform.getFolder();
-        if (cfs.length == 4) {
+        List<JMenu> boardsCustomMenus = base.getBoardsCustomMenus();
+        if (cfs.length == 4 
+            && boardsCustomMenus != null && boardsCustomMenus.size() > 0) {
           String bid = cfs[2] + "_"; // board id
+          HashMap<String,String> cfsmap = new HashMap<String,String>();
           for (String nvpair : cfs[3].split(",")) {
             String[] nv = nvpair.split("=",2);
             if (nv.length == 2 
-                && !(nv[0].equals("") || nv[1].equals("") || nv[0].equals("CONSOLEBAUD"))
-                && tbo.hasMenu(nv[0])) {
-              JRadioButtonMenuItem rbmi = null;
-              String tit = tr(customMenus.get(nv[0]));
-              // System.out.println("custom_" + nv[0] + "=" + bid + nv[1] + " menu:" + tit);
-              for (int i = 1; i < boardsCustomMenus.size() && rbmi == null;i++) {
-                JMenu jm = boardsCustomMenus.get(i);
-                if (jm.isVisible() 
-                    && platUID.equals(jm.getClientProperty("platform")) 
-                    && jm.getText().startsWith(tit)) {
-                  for (int n = 0; n < jm.getItemCount() && rbmi == null; n++) {
-                    JMenuItem jmi = jm.getItem(n);
-                    if (jmi instanceof JRadioButtonMenuItem && jmi.isVisible()) {
-                      try {
-                        Action a = jmi.getAction();
-                        String x = (String)a.getValue("custom_menu_option");
-                        if (x != null && x.equals(nv[1])) {
-                          rbmi = (JRadioButtonMenuItem)jmi;
-                          //System.out.println(tit + "=" + rbmi.getText());
-                          jmi.setSelected(true);
-                          a.actionPerformed(ev);
-                        }
-                      } catch (Exception ex) { ex.printStackTrace();}
-                    }
-                  }
-                }
+                && !(nv[0].equals("") || nv[1].equals("") || nv[0].equals("CONSOLEBAUD"))) {
+              if (tbo.hasMenu(nv[0])) {
+                cfsmap.put(tr(customMenus.get(nv[0])),nv[1]);
+                //System.out.println(nv[0] + " -> " + tr(customMenus.get(nv[0])) + " <= " + nv[1]);
+              } else {
+                warncount++;
+                System.out.println("Option '" + nv[0] + "'='" + nv[1] + "' not found in menu");
               }
-              if (rbmi == null) 
-                System.out.println("Not found menu for custom_" + nv[0] + "=" + bid + nv[1] + " (" + tit + ")");
+            }
+          }
+          for (int i = 1; i < boardsCustomMenus.size();i++) {
+            JMenu jm = boardsCustomMenus.get(i);
+            String[] jmtxt = jm.getText().split(":",2);
+            if (   jm.isVisible() 
+                && platUID.equals(jm.getClientProperty("platform"))
+                && cfsmap.containsKey(jmtxt[0])) {
+              JRadioButtonMenuItem rbmi = null;
+              String opt=cfsmap.get(jmtxt[0]);
+              for (int n = 0; n < jm.getItemCount() && rbmi == null; n++) {
+                JMenuItem jmi = jm.getItem(n);
+                if (jmi instanceof JRadioButtonMenuItem && jmi.isVisible())
+                try {
+                  Action a = jmi.getAction();
+                  String x = (String)a.getValue("custom_menu_option");
+                  if (x != null && x.equals(opt)) {
+                    rbmi = (JRadioButtonMenuItem)jmi;
+                    jmi.setSelected(true);
+                    a.actionPerformed(ev);
+                    //System.out.println("Actived " + jmtxt[0] + "=" + opt);
+                    cfsmap.remove(jmtxt[0]);
+                    break;
+                  }
+                } catch (Exception ex) { ex.printStackTrace();}
+              } // for n (Items)
+            } // valid option for platform
+            if (cfsmap.size() == 0) break; // all done
+          } // walk through boardCustomMenus
+          if (cfsmap.size() > 0) {
+            for (String m : cfsmap.keySet()) {
+              warncount++;
+              System.out.println("Option " + m + "=" + cfsmap.get(m)  + " menu not found!");
             }
           }
         }
-
-        return true;
+        return (warncount > 0?1:0);
       }
-    } catch (Exception e) {
-      e.printStackTrace();
+    } catch (Exception ex) {
+      ex.printStackTrace();
     }
-    return false;
+    return 2;
   } // activateBoard
   
   protected String prefsForBoard() {
@@ -246,7 +253,7 @@ public class IniIno implements Tool {
     return sb.toString();
   }
   
-  protected static void doInoParse(int action, IIPanel panel, 
+  protected void doInoParse(int action, IIPanel panel, 
                  String addName, String addFqbs, String removeName) {
     EditorTab etab = editor.findTab(editor.getSketch().getPrimaryFile());
     JTextArea sta = (JTextArea) etab.getTextArea();
@@ -333,22 +340,22 @@ public class IniIno implements Tool {
         bol += 11;
       }
       doc.insertString(bol," * - " + addName.replace("*"," ").trim() + " * " + addFqbs.trim() + "\n",null);
-    } catch (javax.swing.text.BadLocationException e) {}
+    } catch (javax.swing.text.BadLocationException ex) {}
   }
   
-  protected static void doInoParse(String addName, String addFqbs, String removeName) {
+  protected void doInoParse(String addName, String addFqbs, String removeName) {
     doInoParse(1,null,addName,addFqbs,removeName);
   }
   
-  protected static void doInoParse(String addName,String addFqbs) {
+  protected void doInoParse(String addName,String addFqbs) {
     doInoParse(1,null,addName,addFqbs,null);
   }
   
-  protected static void doInoParse(String removeName) {
+  protected void doInoParse(String removeName) {
     doInoParse(1,null,null,null,removeName);
   }
   
-  protected static void doInoParse(IIPanel panel) {
+  protected void doInoParse(IIPanel panel) {
     doInoParse(0,panel,null,null,null);
   }
   
@@ -357,8 +364,7 @@ public class IniIno implements Tool {
     /* tool menu selected */
     if (panel == null) 
       try {
-        startTimestamp = System.currentTimeMillis();
-        panel = new IIPanel();
+        panel = new IIPanel(this);
       } catch (Exception e) {
         e.printStackTrace();
         return;
@@ -371,6 +377,7 @@ public class IniIno implements Tool {
       doInoParse(panel);
       dialog = new JDialog(editor,"IniIno",ModalityType.APPLICATION_MODAL);
       int scale = Theme.getScale();
+      panel.setMainDialog(dialog);
       dialog.setTitle("IniIno");
       dialog.setResizable(true);
       dialog.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -382,38 +389,100 @@ public class IniIno implements Tool {
       ex.printStackTrace();
     }
   }
-
-  public static void dialogClose() {
-    if (dialog != null)
-      dialog.setVisible(false);
+  
+  private Component topParent(Component x) {
+    Component rv = x, lastok = x;
+    int lev=0;
+    while (rv!=null) {
+      lastok = rv;
+      if (rv instanceof JPopupMenu)
+        rv = ((JPopupMenu)rv).getInvoker();
+      else 
+        rv=rv.getParent();
+      System.out.println("par:" + (lev++) + ":" + lastok.getClass().toString() + 
+                         (rv == null ? "END" : "..."));
+    }
+    return lastok;
   }
 
-  static final class AfterLoadSketch implements Runnable {
-    public void run() {
-      //System.out.println("AfterLoadSketch invoked");
-      try {
-        if (editor.getSketch()!=null && editor.getSketch().getPrimaryFile()!=null) {
-          if (PreferencesData.getBoolean("iniino.autostart",false)) {
-            IniIno.doInoParse(2,null,null,null,null);
+  public void readMenus(boolean first_read) {
+    if (!first_read) {
+      System.out.println("board top parent=" + topParent(boardsMenu));
+      System.out.println("editor content top parent=" + editor.getContentPane());
+      if (toolsMenu != null && boardsMenu != null)
+       // && boardsMenu.getParent() != null
+        return;
+      System.out.println("Refreshing board menus...");
+      boardsMenu = null;
+      toolsMenu = null;
+    }
+    try {
+      for (Object o1 : editor.getContentPane().getParent().getComponents()) {
+        if (o1 instanceof JMenuBar) {
+          for (MenuElement o2 : ((JMenuBar)o1).getSubElements()) {
+            if (o2 instanceof JMenu && ((JMenu)o2).getText().equals(tr("Tools"))) {
+              MenuElement o3 = ((JMenu) o2).getSubElements()[0];
+              if (o3 instanceof JPopupMenu) {
+                toolsMenu = (JPopupMenu) o3;
+                break;
+              }
+            }
           }
-          return; // OK no Invoke
+          break;
         }
-      } catch (Exception e) {}
-      try {Thread.sleep(300);} catch (Exception e) {}
-      SwingUtilities.invokeLater(this);
+      }
+    } catch (Exception ex) {}
+    if (toolsMenu == null) {
+      boardsMenu = null;
+      System.out.println("Can't find Tools menu ");
+      return;
+    }
+    for (Object o1 : toolsMenu.getSubElements()) {
+      if (o1 instanceof JMenu) {
+        JMenu jm=(JMenu)o1;
+        if (jm.getText().startsWith(tr("Board"))) {
+          boardsMenu = (JMenu)o1;
+          // System.out.println("Found Board menu " + ((JMenu)o1).getText());
+          break;
+        }
+      }
+    }
+    if (boardsMenu == null) {
+      System.out.println("Can't find Tools -> Board ");
     }
   }
-  
-  public static Runnable waitSketch() {
-    if (afterSkechLoad==null)
-      afterSkechLoad = new AfterLoadSketch();
-    return afterSkechLoad;
+
+  final class AfterLoadSketch extends Thread {
+    private IniIno caller;
+    public AfterLoadSketch(IniIno c) { 
+      caller=c; 
+    }
+    public void run() {
+      while (true) {
+        try {Thread.sleep(300);} catch (Exception e) {}
+        if (Base.INSTANCE == null) continue;
+        //System.out.println("base:" + Base.INSTANCE.toString() + " hash:" + Base.INSTANCE.hashCode());
+        caller.base = Base.INSTANCE;
+        try {
+          if (caller.editor.getSketch()!=null && caller.editor.getSketch().getPrimaryFile()!=null) {
+            caller.readMenus(true);
+            if (caller.base.getEditors().size() == 1
+              && PreferencesData.getBoolean("iniino.autostart",false)) {
+              //System.out.println("first edit / first board");
+              doInoParse(2,null,null,null,null);
+            }
+            break; // OK
+          }
+        } catch (Exception e3) {}
+      }
+      //System.out.println("end wait for load runner");
+    }
   }
-  
+
   @Override
   public String getMenuTitle() {
     try {
-      SwingUtilities.invokeAndWait(IniIno.waitSketch());
+      new AfterLoadSketch(this).start();
     } catch (Exception e) {
     } catch (java.lang.Error er) {
       /* load second sketch Cannot call invokeAndWait from the event dispatcher thread */
@@ -424,7 +493,7 @@ public class IniIno implements Tool {
 
   @Override
   public void init(Editor editor) {
-    IniIno.editor = editor;
+    this.editor = editor;
     //System.out.println("init called");
   }
 }

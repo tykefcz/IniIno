@@ -42,6 +42,7 @@ import javax.swing.event.ListDataListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import processing.app.Base;
+import processing.app.Editor;
 import processing.app.PreferencesData;
 import processing.app.Theme;
 
@@ -49,6 +50,8 @@ import processing.app.Theme;
 
 public class IIPanel extends JPanel 
                   implements ActionListener,ListSelectionListener {
+  private IniIno iniino;
+  private JDialog dialog;
   private JPanel pnP;
   private JList<String> lsInIno;
   private JTextArea taActual;
@@ -114,14 +117,16 @@ public class IIPanel extends JPanel
   public void actionPerformed(ActionEvent e) {
     Object src = e.getSource();
     if (src == btActivate) {
-      if (IniIno.activateBoard(taRaw.getText())) {
-        JOptionPane.showMessageDialog(btActivate, "Activated successfully");
-        IniIno.dialogClose();
+      int rv;
+      if ((rv=iniino.activateBoard(taRaw.getText()))<2) {
+        JOptionPane.showMessageDialog(btActivate, 
+          rv==0?"Activated successfully":"Activated with Warning" );
+        dialogClose();
       } else
         JOptionPane.showMessageDialog(btActivate, "Error activate");
     } else if (src == btAddIno) {
       if (!actSet.equals("") && foundId < 0) {
-        IniIno.doInoParse(actLbl,actSet);
+        iniino.doInoParse(actLbl,actSet);
         addInoCfg(actSet,actLbl,true);
       }
       btAddIno.setEnabled(false);
@@ -134,7 +139,7 @@ public class IIPanel extends JPanel
         if (a.length < 3 || b.length < 3 
             || !(a[0].equals(b[0]) && a[1].equals(b[1]) && a[2].equals(b[2])))
           newname = actLbl;
-        IniIno.doInoParse(newname,actSet,x.name);
+        iniino.doInoParse(newname,actSet,x.name);
         foundId = selId;
         dataInIno.replace(selId,newname,actSet);
         taRaw.setText(actSet);
@@ -142,115 +147,125 @@ public class IIPanel extends JPanel
       }
       btRepIno.setEnabled(false);
     } else if (src == btClose) {
-      IniIno.dialogClose();
+      dialogClose();
     } else if (src == cbAl) {
       PreferencesData.setBoolean("iniino.autostart",cbAl.isSelected());
     }
   }
 
+  public void dialogClose() {
+    if (dialog != null)
+      dialog.setVisible(false);
+  }
+
   public void valueChanged(ListSelectionEvent e) { 
     Object src = e.getSource();
     if (src==lsInIno)
-      IniIno.panel.selectIniIno(e); 
+      selectIniIno(e); 
   }
 
-  public IIPanel() {
-    GridBagLayout gbP = new GridBagLayout();
-    GridBagConstraints gbcP = new GridBagConstraints();
-    this.setLayout(gbP);
+  public void setMainDialog(JDialog d) {
+    dialog = d;
+  }
 
-    gbcP.gridx = 0; gbcP.gridy = 0; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 0; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHWEST;
-    gbcP.insets = new Insets(20, 10, 0, 0);
+  public IIPanel(IniIno caller) {
+    iniino = caller;
+    GridBagLayout g = new GridBagLayout();
+    GridBagConstraints c = new GridBagConstraints();
+    this.setLayout(g);
+
+    c.gridx = 0; c.gridy = 0; c.gridwidth = 1; c.gridheight = 1;
+    c.fill = GridBagConstraints.NONE; c.weightx = 0; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.insets = new Insets(20, 10, 0, 0);
     JLabel lbA = new JLabel("Actual board:");
-    gbP.setConstraints(lbA, gbcP);
+    g.setConstraints(lbA, c);
     this.add(lbA);
     
-    gbcP.gridx = 0; gbcP.gridy = 1; gbcP.gridwidth = 2; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.BOTH;gbcP.weightx = 1; gbcP.weighty = 1;
-    gbcP.anchor = GridBagConstraints.CENTER;
-    gbcP.insets = new Insets(0, 10, 0, 10);
+    c.gridy++; c.gridwidth = 2;
+    c.fill = GridBagConstraints.BOTH;c.weightx = 1; c.weighty = 1;
+    c.anchor = GridBagConstraints.CENTER;
+    c.insets = new Insets(0, 10, 0, 10);
     taActual = new JTextArea();
     taActual.setRows(2);
     JScrollPane scpTaAct = new JScrollPane(taActual);
-    gbP.setConstraints(scpTaAct, gbcP); this.add(scpTaAct);
+    g.setConstraints(scpTaAct, c); this.add(scpTaAct);
 
-    gbcP.gridx = 0; gbcP.gridy = 2; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 0; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHWEST;
-    gbcP.insets = new Insets(10, 20, 10, 10);
+    c.gridy++; c.gridwidth = 1;
+    c.fill = GridBagConstraints.NONE; c.weightx = 0; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.insets = new Insets(10, 20, 10, 10);
     btAddIno = new JButton("Add to project");
-    gbP.setConstraints(btAddIno, gbcP);
+    g.setConstraints(btAddIno, c);
     this.add(btAddIno);
     
-    gbcP.gridx = 1; gbcP.gridy = 2; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE;gbcP.weightx = 0; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHWEST;
-    gbcP.insets = new Insets(10, 10, 10, 20);
+    c.gridx++; c.gridwidth = 1;
+    c.fill = GridBagConstraints.NONE;c.weightx = 0; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.insets = new Insets(10, 10, 10, 20);
     btRepIno = new JButton("Replace in project");
-    gbP.setConstraints(btRepIno, gbcP);
+    g.setConstraints(btRepIno, c);
     this.add(btRepIno);
 
-    gbcP.gridx = 0; gbcP.gridy = 3; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 0; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHWEST;
-    gbcP.insets = new Insets(10, 10, 0, 0);
+    c.gridx = 0; c.gridy++; c.gridwidth = 1;
+    c.fill = GridBagConstraints.NONE; c.weightx = 0; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.insets = new Insets(10, 10, 0, 0);
     JLabel lbB = new JLabel("Boards in project:");
-    gbP.setConstraints(lbB, gbcP);
+    g.setConstraints(lbB, c);
     this.add(lbB);
 
-    gbcP.gridx = 0; gbcP.gridy = 4; gbcP.gridwidth = 2; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.BOTH; gbcP.weightx = 1; gbcP.weighty = 5;
-    gbcP.anchor = GridBagConstraints.CENTER;
-    gbcP.insets = new Insets(0, 10, 0, 10);
+    c.gridy++; c.gridwidth = 2;
+    c.fill = GridBagConstraints.BOTH; c.weightx = 1; c.weighty = 5;
+    c.anchor = GridBagConstraints.CENTER;
+    c.insets = new Insets(0, 10, 0, 10);
     dataInIno = new ListData();
     lsInIno = new JList<String>(dataInIno);
     lsInIno.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     JScrollPane scpInIno = new JScrollPane(lsInIno);
-    gbP.setConstraints(scpInIno, gbcP);
+    g.setConstraints(scpInIno, c);
     this.add(scpInIno);
     
-    gbcP.gridx = 0; gbcP.gridy = 5; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 0; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHWEST;
-    gbcP.insets = new Insets(10, 10, 0, 0);
+    c.gridy++; c.gridwidth = 2;
+    c.fill = GridBagConstraints.NONE; c.weightx = 0; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.insets = new Insets(10, 10, 0, 0);
     cbAl = new JCheckBox("Auto activate first board after sketch load",
                PreferencesData.getBoolean("iniino.autostart",false));
-    gbP.setConstraints(cbAl, gbcP);
+    g.setConstraints(cbAl, c);
     this.add(cbAl);
 
-    gbcP.gridx = 0; gbcP.gridy = 6; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 0; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHWEST;
-    gbcP.insets = new Insets(10, 10, 0, 0);
+    c.gridy++; c.gridwidth = 2;
+    c.fill = GridBagConstraints.NONE; c.weightx = 0; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.insets = new Insets(10, 10, 0, 0);
     JLabel lbC = new JLabel("Raw settings (for arduino-cli):");
-    gbP.setConstraints(lbC, gbcP);
+    g.setConstraints(lbC, c);
     this.add(lbC);
 
-    gbcP.gridx = 0; gbcP.gridy = 7; gbcP.gridwidth = 2; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.BOTH; gbcP.weightx = 1; gbcP.weighty = 1;
-    gbcP.anchor = GridBagConstraints.CENTER;
-    gbcP.insets = new Insets(0, 10, 0, 10);
+    c.gridy++; c.gridwidth = 2;
+    c.fill = GridBagConstraints.BOTH; c.weightx = 1; c.weighty = 1;
+    c.anchor = GridBagConstraints.CENTER;
+    c.insets = new Insets(0, 10, 0, 10);
     taRaw = new JTextArea(strRaw);
     taRaw.setRows(3);
     JScrollPane scpTaRaw = new JScrollPane(taRaw);
-    gbP.setConstraints(scpTaRaw, gbcP);this.add(scpTaRaw);
+    g.setConstraints(scpTaRaw, c);this.add(scpTaRaw);
     
-    gbcP.gridx = 0; gbcP.gridy = 8; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 1; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHWEST;
-    gbcP.insets = new Insets(10, 20, 20, 10);
+    c.gridy++; c.gridwidth = 1;
+    c.fill = GridBagConstraints.NONE; c.weightx = 1; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.insets = new Insets(10, 20, 20, 10);
     btActivate = new JButton("Activate");
-    gbP.setConstraints(btActivate, gbcP);
+    g.setConstraints(btActivate, c);
     this.add(btActivate);
     
-    gbcP.gridx = 1; gbcP.gridy = 8; gbcP.gridwidth = 1; gbcP.gridheight = 1;
-    gbcP.fill = GridBagConstraints.NONE; gbcP.weightx = 1; gbcP.weighty = 0;
-    gbcP.anchor = GridBagConstraints.NORTHEAST;
-    gbcP.insets = new Insets(10, 10, 20, 20);
+    c.gridx++; c.gridwidth = 1;
+    c.fill = GridBagConstraints.NONE; c.weightx = 1; c.weighty = 0;
+    c.anchor = GridBagConstraints.NORTHEAST;
+    c.insets = new Insets(10, 10, 20, 20);
     btClose = new JButton("Close");
-    gbP.setConstraints(btClose, gbcP);
+    g.setConstraints(btClose, c);
     this.add(btClose);
     
     taActual.setEditable(false);
