@@ -7,12 +7,14 @@ package com.google.tykefcz.iniino;
 
 import java.awt.Component;
 import java.awt.Dialog.ModalityType;
+import java.awt.event.ActionEvent;
 import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -22,6 +24,7 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JRadioButtonMenuItem;
+import javax.swing.JSeparator;
 import javax.swing.JTextArea;
 import javax.swing.MenuElement;
 import javax.swing.SwingUtilities;
@@ -52,6 +55,10 @@ public class IniIno implements Tool {
   protected JDialog dialog = null;
   protected JPopupMenu toolsMenu = null;
   protected JMenu boardsMenu = null;
+  protected int boardsInInoCount = 0;
+  protected Component myMenu = null;
+  
+  public final static String MENUNAME = "Project boards...";
   
   protected static String boardFqbn(TargetBoard b) {
     if (b == null) return "";
@@ -299,12 +306,19 @@ public class IniIno implements Tool {
               } else if (action == 1 && rmbeg < 0 
                          && removeName != null 
                          && bnam.equals(removeName)) {
-                rmbeg = bol; rmend = eol - 1;
+                rmbeg = bol; rmend = eol;
               } else if (action == 2 && boarditem != null) {
                 System.out.println("Activate board at line "+line+":"+bnam+" * "+fqbs);
                 //                 +" inst="+(boarditem!=null?boarditem.getText():"No"));
                 activateBoard(fqbs);
                 return;
+              } else if (action == 3) {
+                JMenuItem mi = 
+                      new JMenuItem(
+                        new SwitchBoardAction(bnam,fqbs));
+                mi.setEnabled(boarditem != null);
+                ((JMenu)myMenu).add(mi);
+                boardsInInoCount++;
               }
             //} else {
             //  System.out.println("bad line:"+line+":"+lntx);
@@ -320,13 +334,40 @@ public class IniIno implements Tool {
                            || (stoff < 0 && eofc >= 0)))
           break;
       }
-      if (action == 0 || action == 2) return; // readed no remove/add ok
+      if (action != 1) return; // readed no remove/add
       if (removeName != null && rmbeg >= 0) {
         // replace / remove found
         doc.remove(rmbeg,rmend - rmbeg);
+        if (myMenu != null && myMenu instanceof JMenu) {
+          JMenu mm = (JMenu)myMenu;
+          int menuremove=-1;
+          int mi = mm.getMenuComponentCount() - 1;
+          while (mi > 0) {
+            if (mm.getMenuComponent(mi) instanceof JMenuItem 
+                && ((JMenuItem)mm.getMenuComponent(mi)).getText().equals(removeName)) {
+              menuremove = mi;
+            }
+            mi--;
+          }
+          if (menuremove > 0)
+            mm.remove(menuremove);
+          if (addName != null && addFqbs != null)
+          try {
+            JMenuItem nmi = new JMenuItem(
+                new SwitchBoardAction(addName,addFqbs));
+            if (menuremove <= 0) {
+              if (boardsInInoCount==0)
+                mm.insertSeparator(1);
+              boardsInInoCount++;
+              mm.insert(nmi,1 + boardsInInoCount);
+            } else {
+              mm.insert(nmi,menuremove);
+            }
+          } catch(Exception ex2) {}
+        }
         if (addName != null && addFqbs != null)
           doc.insertString(rmbeg," * - " + addName.replace("*"," ").trim() 
-                               + " * " + addFqbs.trim(),null);
+                               + " * " + addFqbs.trim() + "\n",null);
         return;
       }
       // No remove found or need - Add
@@ -359,6 +400,32 @@ public class IniIno implements Tool {
     doInoParse(0,panel,null,null,null);
   }
   
+  protected void doFavParse(IIPanel panel,JMenu mm) {
+    int i = 0;
+    String s;
+    while (i < 10) {
+      s = "tool.iniino.preset." + String.valueOf(i);
+      if (PreferencesData.has(s)) {
+        s=PreferencesData.get(s);
+        if (s!=null && !s.trim().equals("")) {
+          String[] aa = s.split("\\*",2);
+          if (aa.length == 2) {
+            //System.out.println("adding " + i + ":" + aa[0]);
+            JMenuItem boarditem = getMenuForBoard(getBoard(aa[1].trim()));
+            if (mm!=null) {
+              JMenuItem x = new JMenuItem(
+                new SwitchBoardAction(aa[0].trim(),aa[1].trim()));
+              x.setEnabled(boarditem != null);
+              mm.add(x);
+            } else if (panel != null)
+              panel.addFavCfg(aa[1].trim(),aa[0].trim(),boarditem != null);
+          }
+        }
+      }
+      i++;
+    }
+  }
+  
   @Override
   public void run() {
     /* tool menu selected */
@@ -372,9 +439,10 @@ public class IniIno implements Tool {
     try {
       String pfb = prefsForBoard();
       JMenuItem bmi = getMenuForBoard(getBoard(pfb));
-      panel.setActual(pfb,(bmi != null ? bmi.getText() : "Unknown"));
       panel.removeInoCfgs();
+      panel.setActual(pfb,(bmi != null ? bmi.getText() : "Unknown"));
       doInoParse(panel);
+      doFavParse(panel,null);
       dialog = new JDialog(editor,"IniIno",ModalityType.APPLICATION_MODAL);
       int scale = Theme.getScale();
       panel.setMainDialog(dialog);
@@ -385,6 +453,7 @@ public class IniIno implements Tool {
       dialog.setContentPane(panel);
       dialog.pack();
       dialog.setVisible(true);
+      refreshMyMenu();
     } catch (Exception ex) {
       ex.printStackTrace();
     }
@@ -407,14 +476,12 @@ public class IniIno implements Tool {
 
   public void readMenus(boolean first_read) {
     if (!first_read) {
-      System.out.println("board top parent=" + topParent(boardsMenu));
-      System.out.println("editor content top parent=" + editor.getContentPane());
       if (toolsMenu != null && boardsMenu != null)
-       // && boardsMenu.getParent() != null
         return;
       System.out.println("Refreshing board menus...");
       boardsMenu = null;
       toolsMenu = null;
+      myMenu = null;
     }
     try {
       for (Object o1 : editor.getContentPane().getParent().getComponents()) {
@@ -434,22 +501,89 @@ public class IniIno implements Tool {
     } catch (Exception ex) {}
     if (toolsMenu == null) {
       boardsMenu = null;
+      myMenu = null;
       System.out.println("Can't find Tools menu ");
       return;
     }
+    int i=0;
     for (Object o1 : toolsMenu.getSubElements()) {
       if (o1 instanceof JMenu) {
         JMenu jm=(JMenu)o1;
         if (jm.getText().startsWith(tr("Board"))) {
           boardsMenu = (JMenu)o1;
           // System.out.println("Found Board menu " + ((JMenu)o1).getText());
+          if (myMenu != null) break;
+        } else if (jm.getText().equals(IniIno.MENUNAME)) {
+          myMenu = (Component)o1;
+          if (boardsMenu != null) break;
+        }
+      } else if (o1 instanceof JMenuItem) {
+        JMenuItem jm=(JMenuItem)o1;
+        if (jm.getText().equals(IniIno.MENUNAME)) {
+          myMenu = (Component)o1;
+          if (boardsMenu != null) break;
+        }
+      }
+      i++;
+    }
+    if (myMenu == null) {
+      System.out.println("Can't find Tools -> " + IniIno.MENUNAME);
+    } else {
+      for (i = 0; i < toolsMenu.getComponentCount(); i++) {
+        if (toolsMenu.getComponent(i) == myMenu) {
+          if (myMenu instanceof JMenuItem) {
+            JMenu myNewMenu = new JMenu(IniIno.MENUNAME);
+            //myNewMenu.putClientProperty("removeOnWindowDeactivation", true);
+            ((JMenuItem)myMenu).setText("Manage in sketch boards");
+            myNewMenu.add((JMenuItem)myMenu);
+            toolsMenu.remove(i);
+            toolsMenu.insert(myNewMenu,i);
+            myMenu = myNewMenu;
+          }
           break;
         }
       }
     }
-    if (boardsMenu == null) {
-      System.out.println("Can't find Tools -> Board ");
+  }
+
+  public final class SwitchBoardAction extends AbstractAction {
+    public SwitchBoardAction(String name, String fqbs) {
+      this.putValue(Action.NAME,name);
+      this.putValue("fqbs",fqbs);
     }
+    public void actionPerformed(ActionEvent e) {
+      // System.out.println("activating " + getValue("fqbs"));
+      try {
+        String fqbs = (String)getValue("fqbs");
+        if (fqbs != null)
+          activateBoard(fqbs);
+      } catch (Exception ex) {}
+    }
+  }
+
+  protected void refreshMyMenu() {
+    if (myMenu != null && myMenu instanceof JMenu) try {
+      JMenu mm = (JMenu)myMenu;
+      int i = mm.getMenuComponentCount() - 1;
+      while (i > 0) {
+        //System.out.println("comp(" + i + ") = " + mm.getMenuComponent(i).getClass());
+        if (mm.getMenuComponent(i) instanceof JMenuItem 
+           || mm.getMenuComponent(i) instanceof JSeparator) {
+          mm.remove(i);
+        }
+        i--;
+      }
+      //mm.add(new JMenuItem(new SwitchBoardAction("tst2","neco:jineho:tam_bude")));
+      mm.addSeparator();
+      boardsInInoCount=0;
+      doInoParse(3,null,null,null,null);
+      if (boardsInInoCount > 0) 
+        mm.addSeparator();
+      doFavParse((IIPanel) null,mm);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    //System.out.println("refresh end");
   }
 
   final class AfterLoadSketch extends Thread {
@@ -458,7 +592,8 @@ public class IniIno implements Tool {
       caller=c; 
     }
     public void run() {
-      while (true) {
+      boolean done=false;
+      while (!done) {
         try {Thread.sleep(300);} catch (Exception e) {}
         if (Base.INSTANCE == null) continue;
         //System.out.println("base:" + Base.INSTANCE.toString() + " hash:" + Base.INSTANCE.hashCode());
@@ -467,11 +602,12 @@ public class IniIno implements Tool {
           if (caller.editor.getSketch()!=null && caller.editor.getSketch().getPrimaryFile()!=null) {
             caller.readMenus(true);
             if (caller.base.getEditors().size() == 1
-              && PreferencesData.getBoolean("iniino.autostart",false)) {
+              && PreferencesData.getBoolean("tool.iniino.autostart",false)) {
               //System.out.println("first edit / first board");
               doInoParse(2,null,null,null,null);
             }
-            break; // OK
+            caller.refreshMyMenu();
+            done = true; // OK end thread
           }
         } catch (Exception e3) {}
       }
@@ -488,7 +624,7 @@ public class IniIno implements Tool {
       /* load second sketch Cannot call invokeAndWait from the event dispatcher thread */
       //System.out.println("Second sketch?");
     }
-    return "Project boards...";
+    return IniIno.MENUNAME;
   }
 
   @Override
