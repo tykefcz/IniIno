@@ -254,6 +254,15 @@ public class IIPanel extends JPanel
           lsInFav.setSelectedIndex(oldsel - 1);
           saveFav=true;
         }
+      } else if (selId > 0) {
+        int oldsel = selId;
+        if (dataInIno.swap(oldsel - 1, oldsel)) {
+          BoardSet bs = dataInIno.get(oldsel - 1);
+          if (bs!=null) 
+            iniino.doInoSwap(bs.name);
+          lsInIno.clearSelection();
+          lsInIno.setSelectedIndex(oldsel - 1);
+        }
       }
     } else if (src == btDelFi) {
       int id;
@@ -559,7 +568,7 @@ public class IIPanel extends JPanel
         btDelFi.setEnabled(true);
         btIno2F.setEnabled(!dataInFav.has(x.cfg));
         btFav2I.setEnabled(false);
-        btFavUp.setEnabled(false);
+        btFavUp.setEnabled(sel > 0);
         btRenFi.setEnabled(true);
         tfFavName.setText(x.name);
         tfFavName.setEditable(true);

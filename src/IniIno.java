@@ -266,7 +266,7 @@ public class IniIno implements Tool {
     JTextArea sta = (JTextArea) etab.getTextArea();
     javax.swing.text.Document doc = sta.getDocument();
     int i = 0,line = 0,stoff = -1,enoff = -1,eofc = -1,eol = 0,bol = 0;
-    int rmbeg = -1,rmend = -1;
+    int rmbeg = -1,rmend = -1,swbeg = -1, swend = -1;
     int nleft = doc.getLength();
     //System.out.println("docLength="+nleft);
     Matcher meoc = Pattern.compile("\\s+\\*/$").matcher(""),
@@ -307,6 +307,16 @@ public class IniIno implements Tool {
                          && removeName != null 
                          && bnam.equals(removeName)) {
                 rmbeg = bol; rmend = eol;
+              } else if (action == 4 && bnam.equals(removeName)
+                         && swbeg >= 0 && swend >= 0) {
+                System.out.println("Swap Up board at line " + line + ":" + bnam);
+                String swline = doc.getText(swbeg, swend - swbeg);
+                lntx = doc.getText(bol, eol - bol);
+                doc.remove(bol,eol - bol);
+                doc.insertString(bol,swline,null);
+                doc.remove(swbeg, swend - swbeg);
+                doc.insertString(swbeg,lntx,null);
+                return;
               } else if (action == 2 && boarditem != null) {
                 System.out.println("Activate board at line "+line+":"+bnam+" * "+fqbs);
                 //                 +" inst="+(boarditem!=null?boarditem.getText():"No"));
@@ -322,6 +332,7 @@ public class IniIno implements Tool {
               }
             //} else {
             //  System.out.println("bad line:"+line+":"+lntx);
+              swbeg = bol; swend = eol;
             }
           }
         }
@@ -398,6 +409,10 @@ public class IniIno implements Tool {
   
   protected void doInoParse(IIPanel panel) {
     doInoParse(0,panel,null,null,null);
+  }
+  
+  protected void doInoSwap(String upName) {
+    doInoParse(4,null,null,null,upName);
   }
   
   protected void doFavParse(IIPanel panel,JMenu mm) {
