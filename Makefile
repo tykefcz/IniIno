@@ -21,8 +21,9 @@ endif
 
 all:
 	test -d bin || mkdir bin
+	rm -rf bin/com/google
 	javac $(TGTOPT) -Xlint:deprecation -Xlint:unchecked -cp $(CLASSPATH) -d bin ./src/*.java
-	cd bin ; jar -cfe $(PROJ).jar $(PRPATH).$(PROJ) $(subst .,/,$(PRPATH))/*.class
+	cd bin ; jar -cfe $(PROJ).jar $(PRPATH).$(PROJ) com/google
 	
 debug:
 	javac -verbose -Xlint:all -cp $(CLASSPATH) -d bin ./src/*.java

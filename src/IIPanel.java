@@ -46,6 +46,7 @@ import processing.app.Base;
 import processing.app.Editor;
 import processing.app.PreferencesData;
 import processing.app.Theme;
+import com.google.tykefcz.artools.BoardsUtil;
 
 @SuppressWarnings("serial")
 
@@ -172,7 +173,7 @@ public class IIPanel extends JPanel
     Object src = e.getSource();
     if (src == btActivate) {
       int rv;
-      if ((rv=iniino.activateBoard(taRaw.getText()))<2) {
+      if ((rv=BoardsUtil.activateBoard(taRaw.getText()))<2) {
         JOptionPane.showMessageDialog(btActivate, 
           rv==0?"Activated successfully":"Activated with Warning" );
         dialogClose();
